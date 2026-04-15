@@ -1,7 +1,7 @@
 body {
   background: #111;
   color: white;
-  font-family: sans-serif;
+  font-family: sans-serif; 
   margin: 0;
 }
 
@@ -19,6 +19,8 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: 8px;
+  font-size: 18px;
+  font-weight: bolder;
   border: none;
   background: #222;
   color: white;
@@ -79,8 +81,10 @@ body {
 
 /* FILE NAME */
 .name {
-  font-size: 12px;
+  font-size: 20px;
+  font-weight: bolder;
   margin: 0 0 6px 0;
+  padding: 10px;
 
   white-space: nowrap;
   overflow: hidden;
@@ -101,7 +105,8 @@ button {
   padding: 5px;
   border-radius: 6px;
   border: none;
-  font-size: 11px;
+  font-size: 18px;
+  font-weight: bolder;
 }
 
 button:hover {
@@ -179,7 +184,7 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
 }
 
@@ -189,4 +194,50 @@ input[type="file"] {
   align-items: center;
   justify-content: center;
   color: #666;
+}
+
+.file-ui p {
+  font-size: 20px;
+  font-weight: bolder;
+}
+
+#uploadBtn {
+  margin-top: 10px;
+  font-size: 18px; 
+  padding-top: 25px;
+  padding-bottom: 25px;
+  font-weight: bolder;
+}
+
+#download {
+  font-size: 22px;
+  font-weight: bold;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-top: 10px;
+  margin-right: 15px;
+}
+
+#share {
+  font-size: 22px;
+  font-weight: bold;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-top: 10px;
+  margin-right: 15px;
+}
+
+#back {
+  font-size: 22px;
+  font-weight: bold;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  padding-left: 15px;
+  padding-right: 15px;
+  margin-top: 10px;
+  margin-right: 15px;
 }

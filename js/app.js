@@ -316,27 +316,36 @@ function openViewer(doc) {
 
   const url = URL.createObjectURL(doc.blob);
 
+  // ✅ FIX: mobile-safe PDF handling
+  if (doc.blob.type === "application/pdf") {
+    window.open(url, "_blank");
+    return;
+  }
+
   let viewerContent = "";
 
   if (doc.blob.type.startsWith("image/")) {
     viewerContent = `<img src="${url}" style="width:100%">`;
-  } else if (doc.blob.type === "application/pdf") {
-    viewerContent = `<iframe src="${url}" width="100%" height="400"></iframe>`;
   } else {
     viewerContent = `<a href="${url}" download>Download</a>`;
   }
 
   content.innerHTML = `
-    <div>
+    <div class="viewer">
       <h3>${doc.name}</h3>
-      ${viewerContent}
-      <br><br>
-      <button id="download">Download</button>
-      <button id="share">Share</button>
-      <button id="back">Back</button>
+      <div class="viewer-content">
+        ${viewerContent}
+      </div>
+
+      <div class="viewer-actions">
+        <button id="download">Download</button>
+        <button id="share">Share</button>
+        <button id="back">Back</button>
+      </div>
     </div>
   `;
 
+  // Download
   document.getElementById("download").onclick = () => {
     const a = document.createElement("a");
     a.href = url;
@@ -344,6 +353,7 @@ function openViewer(doc) {
     a.click();
   };
 
+  // Share
   document.getElementById("share").onclick = async () => {
     try {
       if (navigator.share && navigator.canShare?.({ files: [doc.blob] })) {
@@ -362,6 +372,7 @@ function openViewer(doc) {
     }
   };
 
+  // Back
   document.getElementById("back").onclick = () => {
     currentTab = lastTab;
 
@@ -375,40 +386,88 @@ function openViewer(doc) {
 }
 
 // ----------------------
-// SWIPE
+// SWIPE (FIXED PROPERLY)
 // ----------------------
 
 let touchStartX = 0;
+let touchStartY = 0;
 let touchEndX = 0;
+let isMultiTouch = false;
+let swipeTarget = null;
 
 const tabOrder = ["home", "library", "upload"];
 
 document.addEventListener("touchstart", (e) => {
+  // ❌ ignore pinch
+  if (e.touches.length > 1) {
+    isMultiTouch = true;
+    return;
+  }
+
+  isMultiTouch = false;
+
   touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+
+  // track where swipe started
+  swipeTarget = e.target;
 });
 
 document.addEventListener("touchend", (e) => {
+  if (isMultiTouch) return;
+
+  // ❌ ignore inside viewer (image zoom etc.)
+  if (swipeTarget && swipeTarget.closest(".viewer")) return;
+
   touchEndX = e.changedTouches[0].screenX;
-  handleSwipe();
+  handleSwipe(e);
 });
 
-function handleSwipe() {
-  const diff = touchStartX - touchEndX;
-  if (Math.abs(diff) < 50) return;
+function handleSwipe(e) {
+  const diffX = touchStartX - touchEndX;
+  const diffY = touchStartY - e.changedTouches[0].screenY;
+
+  // ❌ ignore vertical gestures
+  if (Math.abs(diffY) > Math.abs(diffX)) return;
+
+  // ❌ ignore small swipes
+  if (Math.abs(diffX) < 60) return;
 
   let index = tabOrder.indexOf(currentTab);
 
-  if (diff > 0 && index < tabOrder.length - 1) index++;
-  if (diff < 0 && index > 0) index--;
+  if (diffX > 0 && index < tabOrder.length - 1) index++;
+  if (diffX < 0 && index > 0) index--;
 
-  currentTab = tabOrder[index];
+  const nextTab = tabOrder[index];
 
-  tabs.forEach((b) => {
-    b.classList.toggle("active", b.dataset.tab === currentTab);
-  });
+  if (nextTab === currentTab) return;
 
-  updateSearchState();
-  renderCurrent();
+  // smooth animation
+  content.style.transition = "opacity 0.15s, transform 0.15s";
+  content.style.opacity = "0";
+  content.style.transform = diffX > 0
+    ? "translateX(-20px)"
+    : "translateX(20px)";
+
+  setTimeout(() => {
+    currentTab = nextTab;
+
+    tabs.forEach((b) => {
+      b.classList.toggle("active", b.dataset.tab === currentTab);
+    });
+
+    updateSearchState();
+    renderCurrent();
+
+    content.style.transform = diffX > 0
+      ? "translateX(20px)"
+      : "translateX(-20px)";
+
+    requestAnimationFrame(() => {
+      content.style.opacity = "1";
+      content.style.transform = "translateX(0)";
+    });
+  }, 150);
 }
 
 // ----------------------
