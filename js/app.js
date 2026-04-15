@@ -17,15 +17,12 @@ let lastTab = "home";
 
 await initDB();
 
-// Service Worker
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("./sw.js")
-    .then(() => console.log("SW registered"));
+  navigator.serviceWorker.register("./sw.js");
 }
 
 // ----------------------
-// SEARCH STATE CONTROL
+// SEARCH STATE
 // ----------------------
 
 function updateSearchState() {
@@ -39,7 +36,7 @@ function updateSearchState() {
 }
 
 // ----------------------
-// TAB SWITCHING
+// TABS
 // ----------------------
 
 tabs.forEach((btn) => {
@@ -48,14 +45,13 @@ tabs.forEach((btn) => {
     btn.classList.add("active");
 
     currentTab = btn.dataset.tab;
-
     updateSearchState();
     renderCurrent();
   };
 });
 
 // ----------------------
-// LIVE SEARCH
+// SEARCH
 // ----------------------
 
 searchInput.oninput = () => {
@@ -64,22 +60,19 @@ searchInput.oninput = () => {
 };
 
 // ----------------------
-// LAZY LOADING OBSERVER
+// OBSERVER
 // ----------------------
 
 const observer = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        const el = entry.target;
-        loadThumbnail(el);
-        observer.unobserve(el);
+        loadThumbnail(entry.target);
+        observer.unobserve(entry.target);
       }
     });
   },
-  {
-    rootMargin: "120px",
-  }
+  { rootMargin: "120px" }
 );
 
 // ----------------------
@@ -90,23 +83,17 @@ async function renderCurrent() {
   const query = searchInput.value.toLowerCase();
 
   if (currentTab === "home") {
-    let docs = await getPinnedDocs();
+    const docs = await getPinnedDocs();
     renderDocs(filterDocs(docs, query), true);
   }
 
   if (currentTab === "library") {
-    let docs = await getAllDocs();
+    const docs = await getAllDocs();
     renderDocs(filterDocs(docs, query), false);
   }
 
-  if (currentTab === "upload") {
-    loadUpload();
-  }
+  if (currentTab === "upload") loadUpload();
 }
-
-// ----------------------
-// FILTER
-// ----------------------
 
 function filterDocs(docs, query) {
   if (!query) return docs;
@@ -119,75 +106,80 @@ function filterDocs(docs, query) {
 
 async function generatePDFThumbnail(blob) {
   const url = URL.createObjectURL(blob);
-
   const pdf = await pdfjsLib.getDocument(url).promise;
   const page = await pdf.getPage(1);
 
   const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-
+  const ctx = canvas.getContext("2d");
   const viewport = page.getViewport({ scale: 0.5 });
 
   canvas.width = viewport.width;
   canvas.height = viewport.height;
 
-  await page.render({
-    canvasContext: context,
-    viewport,
-  }).promise;
-
+  await page.render({ canvasContext: ctx, viewport }).promise;
   return canvas.toDataURL();
 }
 
 // ----------------------
-// THUMBNAIL LOADER
+// THUMBNAIL
 // ----------------------
 
 async function loadThumbnail(el) {
   const doc = el._doc;
 
   try {
-    // cached
     if (doc.thumbnail) {
-      el.innerHTML = `<img src="${doc.thumbnail}">`;
+      const img = new Image();
+      img.src = doc.thumbnail;
+
+      el.classList.remove("skeleton");
+      el.replaceChildren(img);
       return;
     }
 
-    // image
     if (doc.blob.type.startsWith("image/")) {
       const url = URL.createObjectURL(doc.blob);
-      el.innerHTML = `<img src="${url}">`;
+      const img = new Image();
+      img.src = url;
+
+      img.onload = () => setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      el.classList.remove("skeleton");
+      el.replaceChildren(img);
       return;
     }
 
-    // pdf
     if (doc.blob.type === "application/pdf") {
-      const img = await generatePDFThumbnail(doc.blob);
+      const imgSrc = await generatePDFThumbnail(doc.blob);
 
-      el.innerHTML = `<img src="${img}">`;
+      const img = new Image();
+      img.src = imgSrc;
 
-      doc.thumbnail = img;
+      el.classList.remove("skeleton");
+      el.replaceChildren(img);
+
+      doc.thumbnail = imgSrc;
       await updateDoc(doc);
       return;
     }
 
-    // fallback
-    el.innerHTML = "📄";
-  } catch (err) {
-    el.innerHTML = "⚠️";
-    console.log("Thumbnail error", err);
+    el.classList.remove("skeleton");
+    el.textContent = "📄";
+  } catch {
+    el.classList.remove("skeleton");
+    el.textContent = "⚠️";
   }
 }
 
 // ----------------------
-// DOC RENDER
+// RENDER DOCS
 // ----------------------
 
 function renderDocs(docs, isHome) {
   content.innerHTML = `<div class="grid"></div>`;
   const grid = content.querySelector(".grid");
 
-  if (docs.length === 0) {
+  if (!docs.length) {
     grid.innerHTML = "<p>No documents</p>";
     return;
   }
@@ -196,17 +188,11 @@ function renderDocs(docs, isHome) {
     const card = document.createElement("div");
     card.className = "card";
 
-    const isPinned = doc.pinned === true;
+    const thumb = document.createElement("div");
+    thumb.className = "thumb skeleton";
+    thumb._doc = doc;
+    observer.observe(thumb);
 
-    // skeleton thumb
-    const thumbEl = document.createElement("div");
-    thumbEl.className = "thumb skeleton";
-    thumbEl.innerHTML = "";
-
-    thumbEl._doc = doc;
-    observer.observe(thumbEl);
-
-    // content
     const contentDiv = document.createElement("div");
     contentDiv.className = "card-content";
 
@@ -214,15 +200,11 @@ function renderDocs(docs, isHome) {
       <p class="name">${doc.name}</p>
       <div class="actions">
         <button class="open">Open</button>
-        <button class="pin">${isPinned ? "Unpin" : "Pin"}</button>
+        <button class="pin">${doc.pinned ? "Unpin" : "Pin"}</button>
         ${!isHome ? `<button class="delete">Delete</button>` : ""}
       </div>
     `;
 
-    card.appendChild(thumbEl);
-    card.appendChild(contentDiv);
-
-    // actions
     contentDiv.querySelector(".open").onclick = () => openViewer(doc);
 
     contentDiv.querySelector(".pin").onclick = async () => {
@@ -237,6 +219,7 @@ function renderDocs(docs, isHome) {
       };
     }
 
+    card.append(thumb, contentDiv);
     grid.appendChild(card);
   });
 }
@@ -247,93 +230,79 @@ function renderDocs(docs, isHome) {
 
 function loadUpload() {
   content.innerHTML = `
-  <div class="upload-box">
-    
-    <label class="file-picker">
-      <input type="file" id="fileInput" multiple hidden>
-      <div class="file-ui">
-        <div class="icon">📁</div>
-        <p>Select files</p>
-      </div>
-    </label>
+    <div class="upload-box">
+      <label class="file-picker">
+        <input type="file" id="fileInput" multiple hidden>
+        <div class="file-ui">
+          <div class="icon">📁</div>
+          <p>Select files</p>
+        </div>
+      </label>
 
-    <button id="uploadBtn">Upload</button>
-    <div id="status"></div>
-
-  </div>
-`;
+      <button id="uploadBtn">Upload</button>
+      <div id="status"></div>
+    </div>
+  `;
 
   const fileInput = document.getElementById("fileInput");
-  const uploadBtn = document.getElementById("uploadBtn");
   const status = document.getElementById("status");
 
   fileInput.onchange = () => {
     status.innerHTML = "";
-    for (const file of fileInput.files) {
+    [...fileInput.files].forEach((f) => {
       const p = document.createElement("p");
-      p.textContent = file.name;
+      p.textContent = f.name;
       status.appendChild(p);
-    }
+    });
   };
 
-  uploadBtn.onclick = async () => {
-    const files = fileInput.files;
-
-    if (!files.length) {
-      status.textContent = "Select file(s)";
-      return;
-    }
-
-    status.innerHTML = "";
-
-    for (const file of files) {
-      const doc = {
+  document.getElementById("uploadBtn").onclick = async () => {
+    for (const file of fileInput.files) {
+      await addDoc({
         id: crypto.randomUUID(),
         name: file.name,
         blob: file,
         pinned: false,
         createdAt: Date.now(),
-        thumbnail: null, // 🔥 important
-      };
-
-      await addDoc(doc);
-
-      const p = document.createElement("p");
-      p.textContent = "✔ " + file.name;
-      status.appendChild(p);
+        thumbnail: null,
+      });
     }
-
-    fileInput.value = "";
+    renderCurrent();
   };
 }
 
 // ----------------------
-// VIEWER
+// VIEWER (FIXED)
 // ----------------------
 
 function openViewer(doc) {
   lastTab = currentTab;
-
   const url = URL.createObjectURL(doc.blob);
+
+  // 🔥 FIX: mobile-safe PDF
+  if (doc.blob.type === "application/pdf") {
+    window.open(url, "_blank");
+    return;
+  }
 
   let viewerContent = "";
 
   if (doc.blob.type.startsWith("image/")) {
     viewerContent = `<img src="${url}" style="width:100%">`;
-  } else if (doc.blob.type === "application/pdf") {
-    viewerContent = `<iframe src="${url}" width="100%" height="400"></iframe>`;
   } else {
     viewerContent = `<a href="${url}" download>Download</a>`;
   }
 
   content.innerHTML = `
-    <div>
+    <div class="viewer">
       <h3>${doc.name}</h3>
-      ${viewerContent}
-      <br><br>
-      <button id="download">Download</button>
-      <button id="share">Share</button>
-      <button id="back">Back</button>
+      <div class="viewer-content">${viewerContent}</div>
+
+      <div class="viewer-actions">
+        <button id="download">Download</button>
+        <button id="share">Share</button>
+        <button id="back">Back</button>
+      </div>
     </div>
   `;
 
@@ -344,44 +313,22 @@ function openViewer(doc) {
     a.click();
   };
 
-  document.getElementById("share").onclick = async () => {
-    try {
-      if (navigator.share && navigator.canShare?.({ files: [doc.blob] })) {
-        await navigator.share({
-          title: doc.name,
-          files: [doc.blob],
-        });
-      } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = doc.name;
-        a.click();
-      }
-    } catch {
-      console.log("Share cancelled");
-    }
-  };
-
   document.getElementById("back").onclick = () => {
     currentTab = lastTab;
-
-    tabs.forEach((b) => {
-      b.classList.toggle("active", b.dataset.tab === currentTab);
-    });
-
+    tabs.forEach((b) =>
+      b.classList.toggle("active", b.dataset.tab === currentTab)
+    );
     updateSearchState();
     renderCurrent();
   };
 }
 
 // ----------------------
-// SWIPE
+// SWIPE (FIXED CLEAN)
 // ----------------------
 
 let touchStartX = 0;
 let touchEndX = 0;
-
-const tabOrder = ["home", "library", "upload"];
 
 document.addEventListener("touchstart", (e) => {
   touchStartX = e.changedTouches[0].screenX;
@@ -392,23 +339,43 @@ document.addEventListener("touchend", (e) => {
   handleSwipe();
 });
 
+const tabOrder = ["home", "library", "upload"];
+
 function handleSwipe() {
   const diff = touchStartX - touchEndX;
   if (Math.abs(diff) < 50) return;
 
-  let index = tabOrder.indexOf(currentTab);
+  let i = tabOrder.indexOf(currentTab);
+  if (diff > 0 && i < 2) i++;
+  else if (diff < 0 && i > 0) i--;
 
-  if (diff > 0 && index < tabOrder.length - 1) index++;
-  if (diff < 0 && index > 0) index--;
+  const next = tabOrder[i];
+  if (next === currentTab) return;
 
-  currentTab = tabOrder[index];
+  // 🔥 smooth fade-slide
+  content.style.transition = "opacity 0.15s, transform 0.15s";
+  content.style.opacity = "0";
+  content.style.transform = diff > 0 ? "translateX(-20px)" : "translateX(20px)";
 
-  tabs.forEach((b) => {
-    b.classList.toggle("active", b.dataset.tab === currentTab);
-  });
+  setTimeout(() => {
+    currentTab = next;
 
-  updateSearchState();
-  renderCurrent();
+    tabs.forEach((b) =>
+      b.classList.toggle("active", b.dataset.tab === currentTab)
+    );
+
+    updateSearchState();
+    renderCurrent();
+
+    content.style.transform = diff > 0
+      ? "translateX(20px)"
+      : "translateX(-20px)";
+
+    requestAnimationFrame(() => {
+      content.style.opacity = "1";
+      content.style.transform = "translateX(0)";
+    });
+  }, 150);
 }
 
 // ----------------------
