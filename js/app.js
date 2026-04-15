@@ -5,6 +5,7 @@ import {
   addDoc,
   togglePin,
   deleteDoc,
+  updateDoc,
 } from "./db.js";
 
 const content = document.getElementById("content");
@@ -63,6 +64,25 @@ searchInput.oninput = () => {
 };
 
 // ----------------------
+// LAZY LOADING OBSERVER
+// ----------------------
+
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        loadThumbnail(el);
+        observer.unobserve(el);
+      }
+    });
+  },
+  {
+    rootMargin: "120px",
+  }
+);
+
+// ----------------------
 // MAIN RENDER
 // ----------------------
 
@@ -84,6 +104,19 @@ async function renderCurrent() {
   }
 }
 
+// ----------------------
+// FILTER
+// ----------------------
+
+function filterDocs(docs, query) {
+  if (!query) return docs;
+  return docs.filter((d) => d.name.toLowerCase().includes(query));
+}
+
+// ----------------------
+// PDF THUMBNAIL
+// ----------------------
+
 async function generatePDFThumbnail(blob) {
   const url = URL.createObjectURL(blob);
 
@@ -103,16 +136,47 @@ async function generatePDFThumbnail(blob) {
     viewport,
   }).promise;
 
-  return canvas.toDataURL(); // image preview
+  return canvas.toDataURL();
 }
 
 // ----------------------
-// FILTER
+// THUMBNAIL LOADER
 // ----------------------
 
-function filterDocs(docs, query) {
-  if (!query) return docs;
-  return docs.filter((d) => d.name.toLowerCase().includes(query));
+async function loadThumbnail(el) {
+  const doc = el._doc;
+
+  try {
+    // cached
+    if (doc.thumbnail) {
+      el.innerHTML = `<img src="${doc.thumbnail}">`;
+      return;
+    }
+
+    // image
+    if (doc.blob.type.startsWith("image/")) {
+      const url = URL.createObjectURL(doc.blob);
+      el.innerHTML = `<img src="${url}">`;
+      return;
+    }
+
+    // pdf
+    if (doc.blob.type === "application/pdf") {
+      const img = await generatePDFThumbnail(doc.blob);
+
+      el.innerHTML = `<img src="${img}">`;
+
+      doc.thumbnail = img;
+      await updateDoc(doc);
+      return;
+    }
+
+    // fallback
+    el.innerHTML = "📄";
+  } catch (err) {
+    el.innerHTML = "⚠️";
+    console.log("Thumbnail error", err);
+  }
 }
 
 // ----------------------
@@ -132,61 +196,42 @@ function renderDocs(docs, isHome) {
     const card = document.createElement("div");
     card.className = "card";
 
-    const url = URL.createObjectURL(doc.blob);
     const isPinned = doc.pinned === true;
 
-    let thumb = `<div class="thumb">📄</div>`;
+    // skeleton thumb
+    const thumbEl = document.createElement("div");
+    thumbEl.className = "thumb skeleton";
+    thumbEl.innerHTML = "";
 
-    // Image preview
-    if (doc.blob.type.startsWith("image/")) {
-      thumb = `
-        <div class="thumb">
-          <img src="${url}" />
-        </div>
-      `;
-    }
+    thumbEl._doc = doc;
+    observer.observe(thumbEl);
 
-    // PDF preview
-    else if (doc.blob.type === "application/pdf") {
-      thumb = `<div class="thumb pdf">Loading...</div>`;
+    // content
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "card-content";
 
-      // async render
-      setTimeout(async () => {
-        const imgSrc = await generatePDFThumbnail(doc.blob);
-
-        const img = document.createElement("img");
-        img.src = imgSrc;
-
-        const thumbDiv = card.querySelector(".thumb");
-        if (thumbDiv) {
-          thumbDiv.innerHTML = "";
-          thumbDiv.appendChild(img);
-        }
-      }, 0);
-    }
-
-    card.innerHTML = `
-      ${thumb}
-      <div class="card-content">
-        <p class="name">${doc.name}</p>
-        <div class="actions">
-          <button class="open">Open</button>
-          <button class="pin">${isPinned ? "Unpin" : "Pin"}</button>
-          ${!isHome ? `<button class="delete">Delete</button>` : ""}
-        </div>
+    contentDiv.innerHTML = `
+      <p class="name">${doc.name}</p>
+      <div class="actions">
+        <button class="open">Open</button>
+        <button class="pin">${isPinned ? "Unpin" : "Pin"}</button>
+        ${!isHome ? `<button class="delete">Delete</button>` : ""}
       </div>
     `;
 
-    // actions
-    card.querySelector(".open").onclick = () => openViewer(doc);
+    card.appendChild(thumbEl);
+    card.appendChild(contentDiv);
 
-    card.querySelector(".pin").onclick = async () => {
+    // actions
+    contentDiv.querySelector(".open").onclick = () => openViewer(doc);
+
+    contentDiv.querySelector(".pin").onclick = async () => {
       await togglePin(doc.id);
       renderCurrent();
     };
 
     if (!isHome) {
-      card.querySelector(".delete").onclick = async () => {
+      contentDiv.querySelector(".delete").onclick = async () => {
         await deleteDoc(doc.id);
         renderCurrent();
       };
@@ -222,7 +267,6 @@ function loadUpload() {
   const uploadBtn = document.getElementById("uploadBtn");
   const status = document.getElementById("status");
 
-  // show selected files BEFORE upload
   fileInput.onchange = () => {
     status.innerHTML = "";
     for (const file of fileInput.files) {
@@ -249,6 +293,7 @@ function loadUpload() {
         blob: file,
         pinned: false,
         createdAt: Date.now(),
+        thumbnail: null, // 🔥 important
       };
 
       await addDoc(doc);
@@ -307,14 +352,13 @@ function openViewer(doc) {
           files: [doc.blob],
         });
       } else {
-        // fallback for desktop
         const a = document.createElement("a");
         a.href = url;
         a.download = doc.name;
         a.click();
       }
-    } catch (err) {
-      console.log("Share cancelled or failed");
+    } catch {
+      console.log("Share cancelled");
     }
   };
 
@@ -331,9 +375,8 @@ function openViewer(doc) {
 }
 
 // ----------------------
-
-updateSearchState();
-renderCurrent();
+// SWIPE
+// ----------------------
 
 let touchStartX = 0;
 let touchEndX = 0;
@@ -351,30 +394,24 @@ document.addEventListener("touchend", (e) => {
 
 function handleSwipe() {
   const diff = touchStartX - touchEndX;
-
-  // ignore small swipes
   if (Math.abs(diff) < 50) return;
 
   let index = tabOrder.indexOf(currentTab);
 
-  if (diff > 0) {
-    // swipe left → next
-    if (index < tabOrder.length - 1) index++;
-  } else {
-    // swipe right → previous
-    if (index > 0) index--;
-  }
+  if (diff > 0 && index < tabOrder.length - 1) index++;
+  if (diff < 0 && index > 0) index--;
 
-  const nextTab = tabOrder[index];
+  currentTab = tabOrder[index];
 
-  if (nextTab !== currentTab) {
-    currentTab = nextTab;
+  tabs.forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === currentTab);
+  });
 
-    tabs.forEach((b) => {
-      b.classList.toggle("active", b.dataset.tab === currentTab);
-    });
-
-    updateSearchState();
-    renderCurrent();
-  }
+  updateSearchState();
+  renderCurrent();
 }
+
+// ----------------------
+
+updateSearchState();
+renderCurrent();

@@ -100,3 +100,15 @@ export function deleteDoc(id) {
     tx.onerror = () => reject("Delete failed");
   });
 }
+
+export function updateDoc(doc) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+
+    store.put(doc);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject("Update failed");
+  });
+}
