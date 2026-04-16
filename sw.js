@@ -1,4 +1,4 @@
-const CACHE_NAME = "waterbank-v1";
+const CACHE_NAME = "waterbank-v3"; // 🔥 change version on every update
 
 const ASSETS = [
   "/",
@@ -8,14 +8,35 @@ const ASSETS = [
   "/js/db.js"
 ];
 
-self.addEventListener("install", e => {
+// INSTALL (cache + activate immediately)
+self.addEventListener("install", (e) => {
+  self.skipWaiting(); // 🔥 activate new SW immediately
+
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
-self.addEventListener("fetch", e => {
+// ACTIVATE (clear old cache)
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      )
+    )
+  );
+
+  self.clients.claim(); // 🔥 take control instantly
+});
+
+// FETCH (cache-first)
+self.addEventListener("fetch", (e) => {
   e.respondWith(
-    caches.match(e.request).then(res => res || fetch(e.request))
+    caches.match(e.request).then((res) => res || fetch(e.request))
   );
 });

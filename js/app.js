@@ -19,9 +19,28 @@ await initDB();
 
 // Service Worker
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("./sw.js")
-    .then(() => console.log("SW registered"));
+  navigator.serviceWorker.register("./sw.js").then((reg) => {
+
+    // detect updates
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+
+      newWorker.addEventListener("statechange", () => {
+        if (
+          newWorker.state === "installed" &&
+          navigator.serviceWorker.controller
+        ) {
+          // 🔥 silent update → reload
+          window.location.reload();
+        }
+      });
+    });
+  });
+
+  // 🔥 detect when new SW takes control (after reload)
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    alert("App updated successfully 🚀");
+  });
 }
 
 // ----------------------
@@ -482,16 +501,33 @@ setTimeout(() => {
   let tapCount = 0;
   let lastTapTime = 0;
 
-  document.addEventListener("touchstart", (e) => {
-    // ignore UI elements
-    if (e.target.closest("button") || e.target.closest(".card")) return;
+  let startX = 0;
+  let startY = 0;
 
-    // ignore multi-touch (pinch etc.)
+  document.addEventListener("touchstart", (e) => {
     if (e.touches.length > 1) return;
+
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  });
+
+  document.addEventListener("touchend", (e) => {
+    if (e.changedTouches.length > 1) return;
+
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+
+    const dx = Math.abs(endX - startX);
+    const dy = Math.abs(endY - startY);
+
+    // ❌ ignore swipes / movement
+    if (dx > 10 || dy > 10) return;
+
+    // ❌ ignore UI elements
+    if (e.target.closest("button") || e.target.closest(".card")) return;
 
     const now = Date.now();
 
-    // reset if too slow
     if (now - lastTapTime > 1200) {
       tapCount = 0;
     }
@@ -518,7 +554,6 @@ setTimeout(() => {
       });
     }
 
-    // force real reload
     window.location.href =
       window.location.href.split("?")[0] + "?v=" + Date.now();
   }
