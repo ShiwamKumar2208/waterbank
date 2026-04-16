@@ -318,7 +318,12 @@ function openViewer(doc) {
 
   // ✅ FIX: mobile-safe PDF handling
   if (doc.blob.type === "application/pdf") {
-    window.open(url, "_blank");
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.click();
+
     return;
   }
 
@@ -474,3 +479,42 @@ function handleSwipe(e) {
 
 updateSearchState();
 renderCurrent();
+
+let tapCount = 0;
+let lastTapTime = 0;
+
+document.addEventListener("click", (e) => {
+  // ignore clicks on buttons / cards
+  if (e.target.closest("button") || e.target.closest(".card")) return;
+
+  const now = Date.now();
+
+  // reset if too slow
+  if (now - lastTapTime > 800) tapCount = 0;
+
+  tapCount++;
+  lastTapTime = now;
+
+  if (tapCount >= 6) {
+    tapCount = 0;
+
+    const code = Math.random().toString(36).slice(2, 7);
+
+    const userInput = prompt(`Enter code to refresh: ${code}`);
+
+    if (userInput === code) {
+      hardRefresh();
+    }
+  }
+});
+
+function hardRefresh() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((r) => r.unregister());
+    });
+  }
+
+  // force reload ignoring cache
+  location.reload(true);
+}
