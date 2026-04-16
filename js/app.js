@@ -79,7 +79,7 @@ const observer = new IntersectionObserver(
   },
   {
     rootMargin: "120px",
-  }
+  },
 );
 
 // ----------------------
@@ -450,9 +450,8 @@ function handleSwipe(e) {
   // smooth animation
   content.style.transition = "opacity 0.15s, transform 0.15s";
   content.style.opacity = "0";
-  content.style.transform = diffX > 0
-    ? "translateX(-20px)"
-    : "translateX(20px)";
+  content.style.transform =
+    diffX > 0 ? "translateX(-20px)" : "translateX(20px)";
 
   setTimeout(() => {
     currentTab = nextTab;
@@ -464,9 +463,8 @@ function handleSwipe(e) {
     updateSearchState();
     renderCurrent();
 
-    content.style.transform = diffX > 0
-      ? "translateX(20px)"
-      : "translateX(-20px)";
+    content.style.transform =
+      diffX > 0 ? "translateX(20px)" : "translateX(-20px)";
 
     requestAnimationFrame(() => {
       content.style.opacity = "1";
@@ -480,41 +478,48 @@ function handleSwipe(e) {
 updateSearchState();
 renderCurrent();
 
-let tapCount = 0;
-let lastTapTime = 0;
+setTimeout(() => {
+  let tapCount = 0;
+  let lastTapTime = 0;
 
-document.addEventListener("click", (e) => {
-  // ignore clicks on buttons / cards
-  if (e.target.closest("button") || e.target.closest(".card")) return;
+  document.addEventListener("touchstart", (e) => {
+    // ignore UI elements
+    if (e.target.closest("button") || e.target.closest(".card")) return;
 
-  const now = Date.now();
+    // ignore multi-touch (pinch etc.)
+    if (e.touches.length > 1) return;
 
-  // reset if too slow
-  if (now - lastTapTime > 800) tapCount = 0;
+    const now = Date.now();
 
-  tapCount++;
-  lastTapTime = now;
-
-  if (tapCount >= 6) {
-    tapCount = 0;
-
-    const code = Math.random().toString(36).slice(2, 7);
-
-    const userInput = prompt(`Enter code to refresh: ${code}`);
-
-    if (userInput === code) {
-      hardRefresh();
+    // reset if too slow
+    if (now - lastTapTime > 1200) {
+      tapCount = 0;
     }
-  }
-});
 
-function hardRefresh() {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.getRegistrations().then((regs) => {
-      regs.forEach((r) => r.unregister());
-    });
-  }
+    tapCount++;
+    lastTapTime = now;
 
-  // force reload ignoring cache
-  location.reload(true);
-}
+    if (tapCount >= 5) {
+      tapCount = 0;
+
+      const code = Math.random().toString(36).slice(2, 7);
+      const input = prompt(`Enter code: ${code}`);
+
+      if (input === code) {
+        hardRefresh();
+      }
+    }
+  });
+
+  function hardRefresh() {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      });
+    }
+
+    // force real reload
+    window.location.href =
+      window.location.href.split("?")[0] + "?v=" + Date.now();
+  }
+}, 500);
